@@ -5,7 +5,16 @@ using UnityEngine;
 using TMPro;
 //remember to later have an ambience sound option
 //volume
-//save refrences?
+//save refrences?  
+
+[System.Serializable]
+public class SongData
+{
+    public string Path;
+    public string SongName;
+}
+
+[RequireComponent(typeof(AudioSource), typeof(MusicPlayer))]
 public class RandomMusicPlayer : MonoBehaviour
 {
 
@@ -27,24 +36,21 @@ public class RandomMusicPlayer : MonoBehaviour
         Sequential,
         Repeat
     }
-
-    [System.Serializable]
-    public class SongData
-    {
-        public string Path;
-        public string SongName;
-    }
+    private PlayType ChangeSongType = PlayType.Random; // Default play type
 
     public TMP_InputField pathInputField;
     public UnityEngine.UI.Slider progressSlider;
     public TMP_Dropdown songDropdown;
+    public UnityEngine.UI.Button favButton;
     public TMP_Text currentSongDisplay;
     [SerializeField] private List<SongData> songPaths = new List<SongData>();
     [SerializeField] private List<SongData> recentSongs = new List<SongData>();
+    [SerializeField] private List<string> favoriteSongs = new List<string>();
     public string selectedPath = "C:/Music";
     public string selectedSongName;
     private AudioSource audioSource;
     private bool isLoadingSong = false;
+    private int songsListenedTo = 0;
     [SerializeField] private Page currentPage = Page.Start;
     [SerializeField] private Page lastPage;
 
@@ -59,6 +65,7 @@ public class RandomMusicPlayer : MonoBehaviour
         pathInputField = GameObject.FindGameObjectWithTag("Input").GetComponent<TMP_InputField>();
         progressSlider = GameObject.Find("ProgressSlider").GetComponent<UnityEngine.UI.Slider>();
         currentSongDisplay = GameObject.Find("SongText").GetComponent<TMP_Text>();
+        favButton = GameObject.Find("FavoriteButton").GetComponent<UnityEngine.UI.Button>();
 
         StartUI = GameObject.Find("StartUI");
         LoadingUI = GameObject.Find("LoadingUI");
@@ -75,6 +82,31 @@ public class RandomMusicPlayer : MonoBehaviour
         ErrorUI.SetActive(false);
         lastPage = currentPage;
 
+    }
+
+
+    //Check if a save exists and load it
+    void Start()
+    {
+        LoadOnStart();
+        audioSource.Pause();
+    }
+
+    private void LoadOnStart()
+    {
+        string saveFilePath = Path.Combine(Application.persistentDataPath, "songdata.txt");
+        if (File.Exists(saveFilePath))
+        {
+            string json = File.ReadAllText(saveFilePath);
+            SaveSystem.Load(); // Use static method
+            currentPage = Page.LoadSongs;
+            
+            if (recentSongs != null && recentSongs.Count > 0)
+            {
+                StartCoroutine(LoadAndPlaySong(recentSongs[recentSongs.Count - 1])); // Load the last played song
+                
+            }
+        }
     }
 
 
@@ -96,11 +128,12 @@ public class RandomMusicPlayer : MonoBehaviour
             float sliderValue = (audioSource.time / audioSource.clip.length) * 100f;
             progressSlider.value = sliderValue;
         }
-        else
+        else if (audioSource.clip == null)
         {
-            progressSlider.value = 0f; // Reset slider if no song is playing
+            progressSlider.value = 0f; // Reset slider if song is null
         }
     }
+
 
 
     //the handler for enabling/disabling ui based on current page (also loading the songs and such)
@@ -138,6 +171,8 @@ public class RandomMusicPlayer : MonoBehaviour
     {
         HideUI();
         StartUI.SetActive(true);
+        songPaths.Clear();
+        recentSongs.Clear();
     }
 
     private void ShowOnboardingUI()
@@ -158,8 +193,6 @@ public class RandomMusicPlayer : MonoBehaviour
             return;
 
         isLoadingSong = true;
-        songPaths.Clear();
-        recentSongs.Clear();
 
         string path = pathInputField.text;
         if (string.IsNullOrEmpty(path))
@@ -261,13 +294,26 @@ public class RandomMusicPlayer : MonoBehaviour
 
     public void NextSongPressedHandler()
     {
-        // TODO: Implement logic to play the next song
+        
     }
 
     public void LastSongPressedHandler()
     {
         // TODO: Implement logic to play the previous song
     }
+
+    public void PauseButtonPressedHandler()
+    {
+        if (audioSource.isPlaying)
+        {
+            audioSource.Pause();
+        }
+        else
+        {
+            audioSource.UnPause();
+        }
+    }
+
 
     public void StartButtonPathSelected()
     {
@@ -348,6 +394,7 @@ public class RandomMusicPlayer : MonoBehaviour
 
     private IEnumerator LoadAndPlaySong(SongData song)
     {
+        songsListenedTo++;
         string filePath = "file://" + song.Path;
 
         // Clean up previous audio clip to prevent memory leak
@@ -396,6 +443,7 @@ public class RandomMusicPlayer : MonoBehaviour
                     currentSongDisplay.text = "Failed to load song";
             }
         }
+        CheckIfFavorite();
     }
 
     public void ForceMemoryCleanup()
@@ -404,19 +452,129 @@ public class RandomMusicPlayer : MonoBehaviour
         System.GC.Collect();
         System.GC.WaitForPendingFinalizers();
         System.GC.Collect();
-        
+
         // Unload unused assets
         Resources.UnloadUnusedAssets();
-        
+
         Debug.Log("Forced memory cleanup completed");
     }
 
     #endregion
 
+    #region Favorites
 
 
+    public void AddToFavoritesButton()
+    {
+        if (favoriteSongs.Contains(selectedSongName))
+        {
+            favoriteSongs.Remove(selectedSongName);
+        }
+        else if (selectedSongName != null)
+        {
+            favoriteSongs.Add(selectedSongName);
+        }
+        CheckIfFavorite();
+    }
+
+    private void CheckIfFavorite()
+    {
+        if (!string.IsNullOrEmpty(selectedSongName) && favoriteSongs.Contains(selectedSongName))
+        {
+            favButton.image.color = Color.magenta;
+            Debug.Log("Song is favorited: " + selectedSongName);
+        }
+        else
+        {
+            favButton.image.color = Color.white;
+            Debug.Log("Song is not favorited: " + selectedSongName);
+        }
+    }
+
+
+
+
+
+
+
+
+
+    #endregion
+
+    #region Save/Load
+
+    // Add public save function
+    public void SaveGame()
+    {
+        SaveSystem.Save();
+        Debug.Log("Game saved successfully!");
+    }
+
+    public void Save(ref FavoritesData data)
+    {
+        data._FavoriteSongs = favoriteSongs; 
+        data._RecentSongs = recentSongs; 
+    }
+    public void Save(ref ListensData data)
+    {
+        data._SongsListenedTo = songsListenedTo; // Fixed: use correct field name
+    }
+    public void Save(ref SettingsData data)
+    {
+        data._PlayType = ChangeSongType;
+        data._Volume = audioSource.volume;
+        data._SelectedPath = selectedPath;
+    }
+
+    public void Load(FavoritesData data)
+    {
+        if (data._FavoriteSongs != null)
+            favoriteSongs = data._FavoriteSongs;
+        if (data._RecentSongs != null) 
+            recentSongs = data._RecentSongs; 
+        if (songDropdown != null)
+            songDropdown.ClearOptions();
+    }
+    public void Load(ListensData data)
+    {
+        songsListenedTo = data._SongsListenedTo; 
+    }
+    public void Load(SettingsData data)
+    {
+        ChangeSongType = data._PlayType;
+        if (audioSource != null)
+            audioSource.volume = data._Volume;
+        if (!string.IsNullOrEmpty(data._SelectedPath))
+            selectedPath = data._SelectedPath;
+
+        if (pathInputField != null)
+            pathInputField.text = selectedPath;
+    }
 
 
 
 
 }
+
+[System.Serializable]
+public struct FavoritesData
+{
+    public List<string> _FavoriteSongs;
+    public List<SongData> _RecentSongs;
+}
+
+[System.Serializable]
+public struct ListensData
+{
+    public int _SongsListenedTo;
+}
+
+[System.Serializable]
+public struct SettingsData
+{
+    public RandomMusicPlayer.PlayType _PlayType;
+    public float _Volume;
+    public string _SelectedPath;
+}
+
+#endregion 
