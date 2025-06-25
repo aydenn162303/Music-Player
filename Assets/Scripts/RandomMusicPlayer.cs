@@ -37,6 +37,7 @@ public class RandomMusicPlayer : MonoBehaviour
 
     public TMP_InputField pathInputField;
     public UnityEngine.UI.Slider progressSlider;
+    public TMP_Dropdown songDropdown;
     public TMP_Text currentSongDisplay;
     [SerializeField] private List<SongData> songPaths = new List<SongData>();
     [SerializeField] private List<SongData> recentSongs = new List<SongData>();
@@ -206,10 +207,20 @@ public class RandomMusicPlayer : MonoBehaviour
         Debug.Log("Songs loaded successfully. Transitioning to Music Player UI.");
     }
 
+    private void UpdateSongListDropdown()
+    {
+        foreach (SongData song in songPaths)
+        {
+            TMP_Dropdown.OptionData option = new TMP_Dropdown.OptionData(song.SongName);
+            songDropdown.options.Add(option);
+        }
+    }
+
     private void ShowMusicPlayerUI()
     {
         HideUI();
         MusicPlayerUI.SetActive(true);
+        UpdateSongListDropdown();
         // Implement music player UI logic here
     }
 
@@ -303,6 +314,20 @@ public class RandomMusicPlayer : MonoBehaviour
         startButton.image.color = originalColor;
     }
 
+    public void DropDownSongSelected()
+    {
+        int selectedIndex = songDropdown.value;
+        if (selectedIndex >= 0 && selectedIndex < songPaths.Count)
+        {
+            SongData selectedSong = songPaths[selectedIndex];
+            StartCoroutine(LoadAndPlaySong(selectedSong));
+        }
+        else
+        {
+            Debug.LogWarning("Invalid song selection in dropdown.");
+        }
+    }
+
     public void PlayRandomSong()
     {
         if (songPaths.Count == 0)
@@ -324,7 +349,21 @@ public class RandomMusicPlayer : MonoBehaviour
     private IEnumerator LoadAndPlaySong(SongData song)
     {
         string filePath = "file://" + song.Path;
+
+        // Clean up previous audio clip to prevent memory leak
+        if (audioSource.clip != null)
+        {
+            AudioClip oldClip = audioSource.clip;
+            audioSource.clip = null;
+            DestroyImmediate(oldClip);
+        }
+
+        // Manage recent songs list size to prevent unlimited growth
         recentSongs.Add(song);
+        if (recentSongs.Count > 50) // Keep only last 50 songs
+        {
+            recentSongs.RemoveAt(0);
+        }
 
         using (UnityEngine.Networking.UnityWebRequest www = UnityEngine.Networking.UnityWebRequestMultimedia.GetAudioClip(filePath, AudioType.MPEG))
         {
@@ -341,9 +380,14 @@ public class RandomMusicPlayer : MonoBehaviour
                 {
                     currentSongDisplay.text = song.SongName;
                 }
-
                 selectedSongName = song.SongName;
                 Debug.Log($"Now playing: {song.SongName}");
+
+                // Cleanup memory every 5 songs to prevent buildup
+                if (recentSongs.Count % 5 == 0)
+                {
+                    ForceMemoryCleanup();
+                }
             }
             else
             {
@@ -352,6 +396,19 @@ public class RandomMusicPlayer : MonoBehaviour
                     currentSongDisplay.text = "Failed to load song";
             }
         }
+    }
+
+    public void ForceMemoryCleanup()
+    {
+        // Force garbage collection
+        System.GC.Collect();
+        System.GC.WaitForPendingFinalizers();
+        System.GC.Collect();
+        
+        // Unload unused assets
+        Resources.UnloadUnusedAssets();
+        
+        Debug.Log("Forced memory cleanup completed");
     }
 
     #endregion
