@@ -50,6 +50,7 @@ public static class SaveSystem
         string saveContent = File.ReadAllText(path);
         _saveData = JsonUtility.FromJson<SaveData>(saveContent);
         HandleLoadData();
+        MusicPlayer.Instance.RandomMusicPlayer.FinishedLoading(); // do things when loading is done
     }
 
     private static void HandleLoadData()

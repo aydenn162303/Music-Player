@@ -48,6 +48,7 @@ public class RandomMusicPlayer : MonoBehaviour
     [SerializeField] private List<string> favoriteSongs = new List<string>();
     public string selectedPath = "C:/Music";
     public string selectedSongName;
+    public int selectedSongPlace = 0; //tracks place in the list, DO NOT SAVE AND LOAD IT WILL BE UPDATED
     private AudioSource audioSource;
     private bool isLoadingSong = false;
     private int songsListenedTo = 0;
@@ -60,7 +61,7 @@ public class RandomMusicPlayer : MonoBehaviour
 
     void Awake()
     {
-        Application.targetFrameRate = 60;
+        Application.targetFrameRate = 30;
         audioSource = GetComponent<AudioSource>();
         pathInputField = GameObject.FindGameObjectWithTag("Input").GetComponent<TMP_InputField>();
         progressSlider = GameObject.Find("ProgressSlider").GetComponent<UnityEngine.UI.Slider>();
@@ -100,11 +101,11 @@ public class RandomMusicPlayer : MonoBehaviour
             string json = File.ReadAllText(saveFilePath);
             SaveSystem.Load(); // Use static method
             currentPage = Page.LoadSongs;
-            
+
             if (recentSongs != null && recentSongs.Count > 0)
             {
                 StartCoroutine(LoadAndPlaySong(recentSongs[recentSongs.Count - 1])); // Load the last played song
-                
+
             }
         }
     }
@@ -294,7 +295,7 @@ public class RandomMusicPlayer : MonoBehaviour
 
     public void NextSongPressedHandler()
     {
-        
+
     }
 
     public void LastSongPressedHandler()
@@ -396,6 +397,8 @@ public class RandomMusicPlayer : MonoBehaviour
     {
         songsListenedTo++;
         string filePath = "file://" + song.Path;
+
+        selectedSongPlace = songPaths.FindIndex(s => s.Path == song.Path);
 
         // Clean up previous audio clip to prevent memory leak
         if (audioSource.clip != null)
@@ -510,10 +513,19 @@ public class RandomMusicPlayer : MonoBehaviour
         Debug.Log("Game saved successfully!");
     }
 
+    public void DeleteSave()
+    {
+        string saveFilePath = Path.Combine(Application.persistentDataPath, "songdata.txt");
+        if (File.Exists(saveFilePath))
+        {
+            File.Delete(saveFilePath);
+        }
+    }
+
     public void Save(ref FavoritesData data)
     {
-        data._FavoriteSongs = favoriteSongs; 
-        data._RecentSongs = recentSongs; 
+        data._FavoriteSongs = favoriteSongs;
+        data._RecentSongs = recentSongs;
     }
     public void Save(ref ListensData data)
     {
@@ -530,25 +542,32 @@ public class RandomMusicPlayer : MonoBehaviour
     {
         if (data._FavoriteSongs != null)
             favoriteSongs = data._FavoriteSongs;
-        if (data._RecentSongs != null) 
-            recentSongs = data._RecentSongs; 
+        if (data._RecentSongs != null)
+            recentSongs = data._RecentSongs;
         if (songDropdown != null)
             songDropdown.ClearOptions();
     }
     public void Load(ListensData data)
     {
-        songsListenedTo = data._SongsListenedTo; 
+        songsListenedTo = data._SongsListenedTo;
     }
     public void Load(SettingsData data)
     {
         ChangeSongType = data._PlayType;
-        if (audioSource != null)
-            audioSource.volume = data._Volume;
-        if (!string.IsNullOrEmpty(data._SelectedPath))
-            selectedPath = data._SelectedPath;
 
-        if (pathInputField != null)
-            pathInputField.text = selectedPath;
+        if (audioSource != null) audioSource.volume = data._Volume;
+
+        if (!string.IsNullOrEmpty(data._SelectedPath)) selectedPath = data._SelectedPath;
+
+        
+    }
+
+    //Called from savesys when loading is done
+    public void FinishedLoading()
+    {
+        Debug.Log("Finished loading songs and settings.");
+        if (pathInputField != null) pathInputField.text = selectedPath; //updates text
+
     }
 
 
